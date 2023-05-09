@@ -1,0 +1,1187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>// assumption
+// clock frequency of vehicle is equal to intersection clock frequency
+// so number of clock tick per-second are the same for both system (vehicle and IMS)
+
+
+
+// simulation constraint.
+const int max_vehList = 10;
+const int max_jobList = 10;
+const int max_taskJobList = 10;
+const int max_veh_in_jobList = 2;
+const int vehicle_duration = 5;
+const int cross_duration = vehicle_duration;
+const int job_duration = 5;
+const int max_simulation_duration = 100;
+const int select_scheduler = 1; //0-&gt;fix, 1-&gt;addaptive
+const int interrupt_mode = 0; //0-&gt;off, 1-&gt;on
+const int SWITCH_TIME = 2;
+
+
+clock  clk, clk1, clk2, clk3, clk4, clk5, clk6, clk7, clk8; 
+int t;
+
+
+// vehicle
+typedef struct
+{
+    int id;
+    int t_enter;
+    int t_s;
+    int c;
+    int lane;
+    int dir;
+    int d;
+	int p;
+} vehicle;
+// dir represet one of the set of independent route
+// vehicle 0
+//              {id, t_enter, t_s, c, lane, dir, d}
+vehicle veh1 = {1,0,0,vehicle_duration,1,1,0,0};
+vehicle veh2 = {2,0,0,vehicle_duration,0,2,0,0};
+vehicle veh3 = {3,0,0,vehicle_duration,0,3,0,1};
+vehicle veh4 = {4,0,0,vehicle_duration,0,4,0,0};
+vehicle veh5 = {5,0,0,vehicle_duration,1,1,0,0};
+vehicle veh6 = {6,0,0,vehicle_duration,0,2,0,0};
+vehicle veh7 = {7,0,0,vehicle_duration,0,3,0,0};
+vehicle veh8 = {8,0,0,vehicle_duration,0,4,0,0};
+vehicle reset = {0,0,0,0,0,0,0,0};
+
+
+//vehicle queue
+vehicle vehList[max_vehList];
+int vehListLength()
+{
+    int length;
+    for (i: int[0,(max_vehList-1)])
+    {
+        length = (vehList[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+
+// on connection (V2I)
+chan connect, copied, execute, ready;
+int current_veh_id = 0;
+int current_veh_lane = 0;
+int current_veh_dir = 0;
+int current_veh_p = 0;
+
+void sendID(int id){
+    current_veh_id = id;
+}
+void shareInfo(int lane, int dir, int p){
+    current_veh_lane = lane;
+    current_veh_dir = dir;
+    current_veh_p = p;
+}
+
+// start time calculation
+void start(){
+        int t_start = 0;
+}
+// request handler
+void addVeh(int t_enter){
+    int index = 0;
+    index = vehListLength();
+    current_veh_lane = current_veh_lane;
+    current_veh_dir = current_veh_dir;
+    vehList[index].id = current_veh_id;
+    vehList[index].t_enter = t_enter;
+    vehList[index].t_s = 0;
+    vehList[index].c = vehicle_duration;
+    vehList[index].lane = current_veh_lane;
+    vehList[index].dir = current_veh_dir;
+    vehList[index].p = current_veh_p;
+    vehList[index].d = 0;
+}
+
+//job 
+typedef struct{
+    int id;  
+    int p;
+    int c;
+    int arr;
+    int s;
+    int d;
+    vehicle  vehList[max_veh_in_jobList]; 
+    int task_id;
+}job;
+
+// task
+job new;
+job northSouthSouthNorth[max_taskJobList];  //dir 1
+job northEastSouthWest[max_taskJobList]; //dir 2
+job westEastEastWest[max_taskJobList]; //dir 3
+job westNorthEastSouth[max_taskJobList]; //dir 4
+int northSouthSouthNorth_index = 0;
+int northEastSouthWest_index = 0;
+int westEastEastWest_index = 0;
+int westNorthEastSouth_index = 0;
+int add_job_to_northSouthSouthNorth(){
+    northSouthSouthNorth[northSouthSouthNorth_index] = new;
+    northSouthSouthNorth_index +=1 ;
+    return 1;
+}
+int add_job_to_northEastSouthWest(){
+    northEastSouthWest[northEastSouthWest_index] = new;
+    northEastSouthWest_index +=1;
+    return 2;
+}
+int add_job_to_westEastEastWest(){
+    westEastEastWest[westEastEastWest_index] = new;
+    westEastEastWest_index +=1;
+    return 3;
+}
+int add_job_to_westNorthEastSouth(){
+    westNorthEastSouth[westNorthEastSouth_index] = new;
+    westNorthEastSouth_index +=1;
+    return 4;
+}
+
+void add_job_to_specific_task(int dir){
+    (dir == 1)? add_job_to_northSouthSouthNorth():0;
+    (dir == 2)? add_job_to_northEastSouthWest():0;
+    (dir == 3)? add_job_to_westEastEastWest():0;
+    (dir == 4)? add_job_to_westNorthEastSouth():0;
+}
+int northSouthSouthNorth_length() //1
+{
+    int length;
+    for (i: int[0,(max_jobList-1)])
+    {
+        length = (northSouthSouthNorth[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+int northEastSouthWest_length() //2
+{
+    int length;
+    for (i: int[0,(max_jobList-1)])
+    {
+        length = (northEastSouthWest[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+int westEastEastWest_length() //3
+{
+    int length;
+    for (i: int[0,(max_jobList-1)])
+    {
+        length = (westEastEastWest[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+int westNorthEastSouth_length() //4
+{
+    int length;
+    for (i: int[0,(max_jobList-1)])
+    {
+        length = (westNorthEastSouth[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+
+
+
+// job list
+job jobList[max_jobList];
+int jobListLength()
+{
+    int length;
+    for (i: int[0,(max_jobList-1)])
+    {
+        length = (jobList[i].id!= 0)? (length+1):length;
+    }
+    return length;
+}
+
+
+//////////////////////////////////////////////////////////////////////////// job manager
+int j_p = 0;
+int job_id = 1;
+vehicle temp_veh;
+job reset_job;
+
+void takeVeh()
+    {
+        //store the vehicle (about to take) data to buffer
+        temp_veh = vehList[0];
+        // remove the taken vehicle and move the list foward
+        for (i:int[0,(max_vehList -2)])
+        {
+            vehList[i] = vehList[i+1];
+        }
+        vehList[max_vehList -1 ] = reset;
+    }
+
+
+void addJob(){
+    //create job for the taken veh
+    int index = jobListLength();
+    int p = 0;
+    int c = 5;
+    int arr = 0;
+    int s = 2;
+    int d = 20;
+    // job attribute
+    new.id = job_id;
+    new.c = c;
+    new.arr = arr;
+    new.s = s;
+    new.d = d;
+    new.vehList[0] = temp_veh;
+    new.task_id = (new.vehList[0].dir == 1)?1:new.task_id;
+    new.task_id = (new.vehList[0].dir == 2)?2:new.task_id;
+    new.task_id = (new.vehList[0].dir == 3)?3:new.task_id;
+    new.task_id = (new.vehList[0].dir == 4)?4:new.task_id;
+    new.p = temp_veh.p;
+    temp_veh = reset;
+    // add job to specific task
+    add_job_to_specific_task(new.vehList[0].dir);  
+}
+
+
+////////////////////////////////////////////////////////////////////////////// delay estimation
+int max_delay_low_p =0;
+int max_delay_high_p =0;
+
+int update_max_delay_low_p(int new)
+{
+	max_delay_low_p =(new &gt; max_delay_low_p)?new:max_delay_low_p;
+	return 0;
+}
+
+int update_max_delay_high_p(int new)
+{
+	max_delay_high_p =(new &gt; max_delay_high_p)?new:max_delay_high_p;
+	return 0;
+}
+
+
+////////////////////////////////////////////////////////////////////////////// execution (removing first job from each task)
+int tStart = 100;
+int delay =0;
+
+int remove1(){
+
+	tStart = northSouthSouthNorth[0].vehList[0].t_s;
+	
+	delay = t - northSouthSouthNorth[0].vehList[0].t_enter;
+	(northSouthSouthNorth[0].p&gt;=0)?update_max_delay_low_p(delay):0;
+	(northSouthSouthNorth[0].p&gt;=1)?update_max_delay_high_p(delay):0;
+	
+    for (i:int[0,(max_taskJobList-2)]){
+         northSouthSouthNorth[i] = northSouthSouthNorth[i+1];
+    }
+    northSouthSouthNorth[(max_taskJobList-1)] = reset_job;
+    northSouthSouthNorth_index -=1;
+    return 1;
+}
+int remove2(){
+
+	tStart = northEastSouthWest[0].vehList[0].t_s;
+	
+	delay = t - northEastSouthWest[0].vehList[0].t_enter;
+	(northEastSouthWest[0].p&gt;=0)?update_max_delay_low_p(delay):0;
+	(northEastSouthWest[0].p&gt;=1)?update_max_delay_high_p(delay):0;
+
+    for (i:int[0,(max_taskJobList-2)]){
+         northEastSouthWest[i] = northEastSouthWest[i+1];
+    }
+    northEastSouthWest[(max_taskJobList-1)] = reset_job;
+    northEastSouthWest_index -=1;
+    return 2;
+}
+int remove3(){
+
+	tStart = westEastEastWest[0].vehList[0].t_s;
+	
+	delay = t - westEastEastWest[0].vehList[0].t_enter;
+	(westEastEastWest[0].p&gt;=0)?update_max_delay_low_p(delay):0;
+	(westEastEastWest[0].p&gt;=1)?update_max_delay_high_p(delay):0;
+
+    for (i:int[0,(max_taskJobList-2)]){
+         westEastEastWest[i] = westEastEastWest[i+1];
+    }
+    westEastEastWest[(max_taskJobList-1)] = reset_job;
+    westEastEastWest_index-=1;
+    return 3;
+}
+int remove4(){
+
+	tStart = westNorthEastSouth[0].vehList[0].t_enter;
+	
+	delay = t - westNorthEastSouth[0].vehList[0].t_s;
+	(westNorthEastSouth[0].p&gt;=0)?update_max_delay_low_p(delay):0;
+	(westNorthEastSouth[0].p&gt;=1)?update_max_delay_high_p(delay):0;
+
+    for (i:int[0,(max_taskJobList-2)]){
+         westNorthEastSouth[i] = westNorthEastSouth[i+1];
+    }
+    westNorthEastSouth[(max_taskJobList-1)] = reset_job;
+    westNorthEastSouth_index-=1;
+    
+    return 4;
+}
+void removeJob(int task_id){
+    (task_id==1)?remove1():0;
+    (task_id==2)?remove2():0;
+    (task_id==3)?remove3():0;
+    (task_id==4)?remove4():0;
+}
+
+
+///////////////////////////////////////////////////////////////////////////// select next task
+int selected_task = 1;
+int current_running_job_id = 0;
+
+/// fist check the task 1, if there is no vehicle
+/// check the task 2, if there is novehicle
+/// check the task 3, if there is novehicle
+/// check the task 4, if there is novehicle
+/// check the task 1, if there is novehicle  ....
+
+//int length_northSouthSouthNorth = 0;
+//int length_northEastSouthWest = 0;
+//int length_westEastEastWest = 0;
+//int length_westNorthEastSouth = 0;
+int executed1(){
+    //length_northSouthSouthNorth = northSouthSouthNorth_length();
+    //length_northEastSouthWest = northEastSouthWest_length();
+    //length_westEastEastWest = westEastEastWest_length();
+    //length_westNorthEastSouth = westNorthEastSouth_length(); 
+    selected_task = (westNorthEastSouth_length()&gt;=1)?4: selected_task;
+    selected_task = (westEastEastWest_length()&gt;=1)?3: selected_task;
+    selected_task = (northEastSouthWest_length()&gt;=1)?2: selected_task ; 
+    return 0;
+}
+int executed2(){ 
+    selected_task = (northSouthSouthNorth_length()&gt;=1)?1 :selected_task ;
+    selected_task = (westNorthEastSouth_length()&gt;=1)?4: selected_task;
+    selected_task = (westEastEastWest_length()&gt;=1)?3: selected_task;
+    return 0;
+}
+int executed3(){ 
+    selected_task = (northEastSouthWest_length()&gt;=1)?2: selected_task ;
+    selected_task = (northSouthSouthNorth_length()&gt;=1)?1:selected_task;
+    selected_task = (westNorthEastSouth_length()&gt;=1)?4: selected_task;
+    return 0;
+}
+int executed4(){
+    selected_task = (westEastEastWest_length()&gt;=1)?3: selected_task; 
+    selected_task = (northEastSouthWest_length()&gt;=1)?2: selected_task ;
+    selected_task = (northSouthSouthNorth_length()&gt;=1)?1: selected_task;
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////  set start time
+/// since the start time are resetted afted excuting a job
+/// the oder of start time must be different
+/// the order should based on the current selected task
+int s =0;
+int northSouthSouthNorth_setStart(){ //1
+    int st=s;
+    northSouthSouthNorth[0].vehList[0].d = s + vehicle_duration;
+    s = s + vehicle_duration;
+    return st;
+}
+int northEastSouthWest_setStart(){ //2
+    int st=s;
+    northEastSouthWest[0].vehList[0].d = s + vehicle_duration;
+    s = s + vehicle_duration;
+    return st;
+}
+int westEastEastWest_setStart(){ //3
+    int st=s;
+    westEastEastWest[0].vehList[0].d = s + vehicle_duration;
+    s = s + vehicle_duration;
+    return st;
+}
+int westNorthEastSouth_setStart(){ //4
+    int st=s;
+    westNorthEastSouth[0].vehList[0].d = s + vehicle_duration;
+    s = s + vehicle_duration;
+    return st;
+}
+
+/// set of order 
+int current_task_1()
+{
+	northSouthSouthNorth[0].vehList[0].t_s=(northSouthSouthNorth_length()&gt;=1)?northSouthSouthNorth_setStart():0; //1
+    northEastSouthWest[0].vehList[0].t_s=(northEastSouthWest_length()&gt;=1)?northEastSouthWest_setStart():0; //2
+	westEastEastWest[0].vehList[0].t_s=(westEastEastWest_length()&gt;=1)?westEastEastWest_setStart():0; // 3 
+	westNorthEastSouth[0].vehList[0].t_s=(westNorthEastSouth_length()&gt;=1)?westNorthEastSouth_setStart():0;// 4
+	return 0;
+}
+
+int current_task_2()
+{
+    northEastSouthWest[0].vehList[0].t_s=(northEastSouthWest_length()&gt;=1)?northEastSouthWest_setStart():0; //2
+	westEastEastWest[0].vehList[0].t_s=(westEastEastWest_length()&gt;=1)?westEastEastWest_setStart():0; // 3 
+	westNorthEastSouth[0].vehList[0].t_s=(westNorthEastSouth_length()&gt;=1)?westNorthEastSouth_setStart():0;// 4
+	northSouthSouthNorth[0].vehList[0].t_s=(northSouthSouthNorth_length()&gt;=1)?northSouthSouthNorth_setStart():0; //1
+	return 0;
+}
+
+int current_task_3()
+{
+	westEastEastWest[0].vehList[0].t_s=(westEastEastWest_length()&gt;=1)?westEastEastWest_setStart():0; // 3 
+	westNorthEastSouth[0].vehList[0].t_s=(westNorthEastSouth_length()&gt;=1)?westNorthEastSouth_setStart():0;// 4
+	northSouthSouthNorth[0].vehList[0].t_s=(northSouthSouthNorth_length()&gt;=1)?northSouthSouthNorth_setStart():0; //1
+    northEastSouthWest[0].vehList[0].t_s=(northEastSouthWest_length()&gt;=1)?northEastSouthWest_setStart():0; //2
+	return 0;
+}
+
+int current_task_4()
+{
+	westNorthEastSouth[0].vehList[0].t_s=(westNorthEastSouth_length()&gt;=1)?westNorthEastSouth_setStart():0;// 4
+	northSouthSouthNorth[0].vehList[0].t_s=(northSouthSouthNorth_length()&gt;=1)?northSouthSouthNorth_setStart():0; //1
+    northEastSouthWest[0].vehList[0].t_s=(northEastSouthWest_length()&gt;=1)?northEastSouthWest_setStart():0; //2
+	westEastEastWest[0].vehList[0].t_s=(westEastEastWest_length()&gt;=1)?westEastEastWest_setStart():0; // 3 
+	return 0;
+}
+
+
+
+/// the order should based on the current selected task
+void update_start_time()
+{
+	(selected_task==1)?current_task_1():0;
+	(selected_task==2)?current_task_2():0;
+	(selected_task==3)?current_task_3():0;
+	(selected_task==4)?current_task_4():0;
+}
+////////////////////////////////////////////////////////////////////////////  scheduler
+void update_select_task(){
+    (selected_task==1)?executed1():0;
+    (selected_task==2)?executed2():0;
+    (selected_task==3)?executed3():0;
+    (selected_task==4)?executed4():0;
+    
+    
+}
+
+
+//////////////////////////////////////////////////////////////////////////// interupt listening
+int priority_job_dir = 0;
+chan preempt, continue_, priority_check, row;
+int dir_p=0;
+int j_p_start_t=10000;
+int update_dir_p(int new_dir_p, int s_t)
+{
+    dir_p=new_dir_p;// update dir(set of concurrent direction) that have priority
+    j_p_start_t=s_t;
+    j_p++;
+    return 1;
+}
+
+void job_examinate()
+{
+	for(j:int[0,max_taskJobList-1])
+	{
+		j_p=(northSouthSouthNorth[j].vehList[0].p==1)?update_dir_p(northSouthSouthNorth[j].vehList[0].dir,(t+SWITCH_TIME)):j_p; //1
+	}
+	for(j:int[0,max_taskJobList-1])
+	{
+		j_p=(northEastSouthWest[j].vehList[0].p==1)?update_dir_p(northEastSouthWest[j].vehList[0].dir,(t+SWITCH_TIME)):j_p; //2
+	}
+	for(j:int[0,max_taskJobList-1])
+	{
+		j_p=(westEastEastWest[j].vehList[0].p==1)?update_dir_p(westEastEastWest[j].vehList[0].dir,(t+SWITCH_TIME)):j_p; //3
+	}
+	for(j:int[0,max_taskJobList-1])
+	{
+		j_p=(westNorthEastSouth[j].vehList[0].p==1)?update_dir_p(westNorthEastSouth[j].vehList[0].dir,(t+SWITCH_TIME)):j_p; //4
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////// interupt handling
+int stopped_task = 0;
+
+void execute_all_in_priority_task()
+{
+	if(dir_p == 1) //1
+	{
+		s = t;
+		for(i:int[0,max_taskJobList-1])
+		{
+			s=(northSouthSouthNorth[i].vehList[0].id&gt;0)?(s+vehicle_duration):s; // next start time is after this job is done
+			removeJob(dir_p);
+			t=(northSouthSouthNorth[i].vehList[0].id&gt;0)?(t+vehicle_duration):t; //current itme equal to finish time
+		}
+        northSouthSouthNorth_index = 0;
+	}
+	if(dir_p == 2) //2
+	{
+		s = t;
+		for(i:int[0,max_taskJobList-1])
+		{
+			s=(northEastSouthWest[i].vehList[0].id&gt;0)?(s+vehicle_duration):s; // next start time is after this job is done
+			removeJob(dir_p);
+			t=(northEastSouthWest[i].vehList[0].id&gt;0)?(t+vehicle_duration):t; //current itme equal to finish time
+		}
+        northEastSouthWest_index = 0;
+	}
+	if(dir_p == 3) //3
+	{
+		s = t;
+		for(i:int[0,max_taskJobList-1])
+		{
+			s=(westEastEastWest[i].vehList[0].id&gt;0)?(s+vehicle_duration):s; // next start time is after this job is done
+			removeJob(dir_p);
+			t=(westEastEastWest[i].vehList[0].id&gt;0)?(t+vehicle_duration):t; //current itme equal to finish time
+		}
+        westEastEastWest_index = 0;
+	}
+	if(dir_p == 4) //4
+	{
+		s = t;
+		for(i:int[0,max_taskJobList-1])
+		{
+			s=(westNorthEastSouth[i].vehList[0].id&gt;0)?(s+vehicle_duration):s; // next start time is after this job is done
+			removeJob(dir_p);
+			t=(westNorthEastSouth[i].vehList[0].id&gt;0)?(t+vehicle_duration):t; //current itme equal to finish time
+		}
+        westNorthEastSouth_index = 0;
+	}
+	update_start_time();
+	j_p =0;
+	dir_p=0;
+}
+
+// classic
+int t_start_phase = 0;
+int phase_duration = 6;
+
+// vehicle_queue
+
+chan access, release;
+
+
+
+
+</declaration>
+	<template>
+		<name>vehicle_</name>
+		<parameter>vehicle &amp;veh, clock &amp;clk_v</parameter>
+		<location id="id0" x="-689" y="-170">
+			<name x="-714" y="-204">entering</name>
+		</location>
+		<location id="id1" x="-578" y="-170">
+			<name x="-603" y="-204">requesting</name>
+		</location>
+		<location id="id2" x="-425" y="-170">
+			<name x="-451" y="-204">sending</name>
+		</location>
+		<location id="id3" x="-50" y="-170">
+			<name x="-68" y="-204">ready</name>
+		</location>
+		<location id="id4" x="229" y="-170">
+			<name x="220" y="-204">cross</name>
+		</location>
+		<location id="id5" x="-255" y="-170">
+			<name x="-272" y="-204">wait</name>
+		</location>
+		<location id="id6" x="416" y="-170">
+			<name x="391" y="-204">crossed</name>
+		</location>
+		<init ref="id0"/>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id6"/>
+			<label kind="guard" x="238" y="-153">clk_v &gt;= cross_duration</label>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id4"/>
+			<label kind="guard" x="17" y="-348">interrupt_mode == 1 &amp;&amp;
+dir_p==veh.dir</label>
+			<label kind="synchronisation" x="76" y="-272">row?</label>
+			<label kind="assignment" x="17" y="-314">clk_v := 0</label>
+			<nail x="93" y="-289"/>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id4"/>
+			<label kind="guard" x="17" y="-42">select_scheduler == 0 &amp;&amp;
+selected_task == veh.dir</label>
+			<label kind="synchronisation" x="68" y="-59">execute?</label>
+			<label kind="assignment" x="68" y="0">clk_v := 0</label>
+			<nail x="93" y="-59"/>
+		</transition>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id3"/>
+			<label kind="synchronisation" x="-178" y="-204">copied?</label>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id5"/>
+			<label kind="assignment" x="-442" y="-153">shareInfo(veh.lane, veh.dir, veh.p)</label>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id4"/>
+			<label kind="guard" x="8" y="-212">select_scheduler == 1</label>
+			<label kind="synchronisation" x="59" y="-170">execute?</label>
+			<label kind="assignment" x="51" y="-195">clk_v := 0</label>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="-527" y="-212">connect!</label>
+			<label kind="assignment" x="-552" y="-161">sendID(veh.id)</label>
+		</transition>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<nail x="-612" y="-170"/>
+		</transition>
+	</template>
+	<template>
+		<name>clck</name>
+		<location id="id7" x="0" y="0">
+			<name x="17" y="-17">running</name>
+			<label kind="invariant" x="76" y="-17">clk &lt;= 1</label>
+		</location>
+		<location id="id8" x="0" y="119">
+			<name x="25" y="110">finish</name>
+		</location>
+		<init ref="id7"/>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id8"/>
+			<label kind="guard" x="17" y="42">t&gt;=max_simulation_duration</label>
+		</transition>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-340" y="-17">clk &gt;= 1 &amp;&amp; t&lt;=max_simulation_duration</label>
+			<label kind="assignment" x="-170" y="0">clk := 0, t := t+1</label>
+			<nail x="-68" y="-59"/>
+			<nail x="-68" y="76"/>
+		</transition>
+	</template>
+	<template>
+		<name>requestHandler</name>
+		<location id="id9" x="-34" y="-110">
+			<name x="-59" y="-144">listening</name>
+		</location>
+		<location id="id10" x="-178" y="34">
+			<name x="-220" y="42">encapsulation</name>
+		</location>
+		<location id="id11" x="102" y="34">
+			<name x="85" y="42">update</name>
+		</location>
+		<init ref="id9"/>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="178" y="0">access!</label>
+			<label kind="assignment" x="178" y="17">addVeh(t)</label>
+			<nail x="110" y="34"/>
+			<nail x="170" y="34"/>
+			<nail x="170" y="-17"/>
+		</transition>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id9"/>
+			<label kind="synchronisation" x="34" y="-59">release!</label>
+		</transition>
+		<transition>
+			<source ref="id10"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="-68" y="8">copied!</label>
+		</transition>
+		<transition>
+			<source ref="id9"/>
+			<target ref="id10"/>
+			<label kind="synchronisation" x="-161" y="-68">connect?</label>
+		</transition>
+	</template>
+	<template>
+		<name>vehicle_queue</name>
+		<location id="id12" x="-8" y="-68">
+			<name x="-18" y="-102">idle</name>
+		</location>
+		<location id="id13" x="-8" y="-8">
+			<name x="-25" y="8">busy</name>
+		</location>
+		<init ref="id12"/>
+		<transition>
+			<source ref="id12"/>
+			<target ref="id13"/>
+			<label kind="synchronisation" x="42" y="-51">access?</label>
+			<nail x="34" y="-59"/>
+			<nail x="34" y="-8"/>
+		</transition>
+		<transition>
+			<source ref="id13"/>
+			<target ref="id12"/>
+			<label kind="synchronisation" x="-102" y="-51">release?</label>
+			<nail x="-42" y="-8"/>
+			<nail x="-42" y="-59"/>
+		</transition>
+	</template>
+	<template>
+		<name>jobManager</name>
+		<location id="id14" x="-42" y="-93">
+			<name x="-68" y="-127">listening</name>
+		</location>
+		<location id="id15" x="-127" y="25">
+			<name x="-170" y="34">encapsulation</name>
+		</location>
+		<location id="id16" x="34" y="25">
+			<name x="17" y="42">update</name>
+		</location>
+		<location id="id17" x="221" y="-93">
+			<name x="195" y="-127">complete</name>
+		</location>
+		<init ref="id14"/>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id14"/>
+			<label kind="synchronisation" x="68" y="-119">priority_check!</label>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id17"/>
+			<label kind="guard" x="93" y="-17">interrupt_mode ==  1</label>
+			<label kind="synchronisation" x="93" y="0">release!</label>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id14"/>
+			<label kind="guard" x="0" y="-51">interrupt_mode == 0</label>
+			<label kind="synchronisation" x="17" y="-34">release!</label>
+		</transition>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id16"/>
+			<label kind="assignment" x="-68" y="25">addJob()</label>
+		</transition>
+		<transition>
+			<source ref="id14"/>
+			<target ref="id15"/>
+			<label kind="guard" x="-212" y="-59">vehListLength()&gt;=1</label>
+			<label kind="synchronisation" x="-161" y="-17">access!</label>
+			<label kind="assignment" x="-161" y="-34">takeVeh()</label>
+		</transition>
+	</template>
+	<template>
+		<name>classic</name>
+		<location id="id18" x="-102" y="-119">
+			<name x="-93" y="-110">Task1</name>
+		</location>
+		<location id="id19" x="-102" y="195">
+			<name x="-93" y="161">Task4</name>
+		</location>
+		<location id="id20" x="272" y="-119">
+			<name x="229" y="-110">Task2</name>
+		</location>
+		<location id="id21" x="281" y="195">
+			<name x="229" y="161">Task3</name>
+		</location>
+		<init ref="id18"/>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-348" y="289">westNorthEastSouth_length()&gt;=1</label>
+			<label kind="synchronisation" x="-272" y="272">execute!</label>
+			<label kind="assignment" x="-348" y="255">removeJob(4),t= t+vehicle_duration</label>
+			<nail x="-93" y="280"/>
+			<nail x="-187" y="195"/>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id21"/>
+			<label kind="guard" x="323" y="263">westEastEastWest_length()&gt;=1</label>
+			<label kind="synchronisation" x="357" y="306">execute!</label>
+			<label kind="assignment" x="272" y="289">removeJob(3),t= t+vehicle_duration</label>
+			<nail x="391" y="221"/>
+			<nail x="289" y="280"/>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id20"/>
+			<label kind="guard" x="331" y="-195">northEastSouthWest_length()&gt;=1</label>
+			<label kind="synchronisation" x="357" y="-212">execute!</label>
+			<label kind="assignment" x="263" y="-229">removeJob(2),t= t+vehicle_duration</label>
+			<nail x="297" y="-204"/>
+			<nail x="374" y="-110"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-365" y="-195">northSouthSouthNorth_length()&gt;=1</label>
+			<label kind="synchronisation" x="-280" y="-212">execute!</label>
+			<label kind="assignment" x="-365" y="-229">removeJob(1),t= t+vehicle_duration</label>
+			<nail x="-119" y="-119"/>
+			<nail x="-204" y="-110"/>
+			<nail x="-127" y="-212"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-348" y="17">phase_duration&lt;= t - t_start_phase</label>
+			<label kind="assignment" x="-297" y="42">t_start_phase := t,
+update_select_task()</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-25" y="161">phase_duration&lt;= t - t_start_phase</label>
+			<label kind="assignment" x="34" y="204">t_start_phase := t,
+update_select_task()</label>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id21"/>
+			<label kind="guard" x="276" y="4">phase_duration&lt;= t - t_start_phase</label>
+			<label kind="assignment" x="314" y="42">t_start_phase := t,
+update_select_task()</label>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-17" y="-144">phase_duration&lt;= t - t_start_phase</label>
+			<label kind="assignment" x="34" y="-110">t_start_phase := t,
+update_select_task()</label>
+		</transition>
+	</template>
+	<template>
+		<name>scheduler</name>
+		<location id="id22" x="-1181" y="-832">
+			<name x="-1198" y="-866">Task1</name>
+			<label kind="invariant" x="-1215" y="-926">job_duration &gt;= t - 
+northSouthSouthNorth[0].
+vehList[0].t_s</label>
+		</location>
+		<location id="id23" x="-1776" y="-493">
+			<committed/>
+		</location>
+		<location id="id24" x="-1181" y="-688">
+			<name x="-1198" y="-722">Task2</name>
+			<label kind="invariant" x="-1198" y="-782">job_duration &gt;= t - 
+northEastSouthWest[0].
+vehList[0].t_s</label>
+		</location>
+		<location id="id25" x="-1190" y="-348">
+			<name x="-1207" y="-331">Task3</name>
+			<label kind="invariant" x="-1224" y="-314">job_duration &gt;= t - 
+westEastEastWest[0].
+vehList[0].t_s</label>
+		</location>
+		<location id="id26" x="-1198" y="-195">
+			<name x="-1215" y="-187">Task4</name>
+			<label kind="invariant" x="-1241" y="-170">job_duration &gt;= t - 
+westNorthEastSouth[0].
+vehList[0].t_s</label>
+		</location>
+		<location id="id27" x="-544" y="-391">
+			<name x="-554" y="-425">idle</name>
+		</location>
+		<location id="id28" x="-1190" y="-527">
+			<name x="-1156" y="-535">interrupt</name>
+		</location>
+		<init ref="id27"/>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-1122" y="-459">stopped_task == 4</label>
+			<label kind="synchronisation" x="-1113" y="-442">continue_?</label>
+			<nail x="-1062" y="-331"/>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id25"/>
+			<label kind="guard" x="-1173" y="-408">stopped_task == 3</label>
+			<label kind="synchronisation" x="-1173" y="-391">continue_?</label>
+			<nail x="-1173" y="-442"/>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id22"/>
+			<label kind="guard" x="-1088" y="-620">stopped_task == 1</label>
+			<label kind="synchronisation" x="-1079" y="-637">continue_?</label>
+			<nail x="-1028" y="-697"/>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id24"/>
+			<label kind="guard" x="-1164" y="-654">stopped_task == 2</label>
+			<label kind="synchronisation" x="-1164" y="-671">continue_?</label>
+			<nail x="-1164" y="-629"/>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1555" y="-459">stopped_task == 0</label>
+			<label kind="synchronisation" x="-1521" y="-476">continue_!</label>
+			<nail x="-1496" y="-484"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-1521" y="-578">preempt?</label>
+			<label kind="assignment" x="-1538" y="-595">stopped_task = 0</label>
+			<nail x="-1496" y="-552"/>
+		</transition>
+		<transition>
+			<source ref="id26"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-1283" y="-238">preempt?</label>
+			<label kind="assignment" x="-1343" y="-255">stopped_task = 4</label>
+			<nail x="-1207" y="-204"/>
+			<nail x="-1283" y="-382"/>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-1258" y="-399">preempt?</label>
+			<label kind="assignment" x="-1309" y="-416">stopped_task = 3</label>
+		</transition>
+		<transition>
+			<source ref="id24"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-1241" y="-671">preempt?</label>
+			<label kind="assignment" x="-1292" y="-654">stopped_task = 2</label>
+		</transition>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="-1283" y="-799">preempt?</label>
+			<label kind="assignment" x="-1317" y="-782">stopped_task = 1</label>
+			<nail x="-1267" y="-710"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1309" y="127">westNorthEastSouth_length()&gt;=1</label>
+			<label kind="assignment" x="-1334" y="161">update_start_time(),update_select_task()</label>
+			<nail x="-714" y="153"/>
+			<nail x="-1725" y="161"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1309" y="51">westEastEastWest_length()&gt;=1</label>
+			<label kind="assignment" x="-1343" y="85">update_start_time(),update_select_task()</label>
+			<nail x="-739" y="76"/>
+			<nail x="-1700" y="93"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1317" y="-25">northEastSouthWest_length()&gt;=1</label>
+			<label kind="assignment" x="-1343" y="9">update_start_time(),update_select_task()</label>
+			<nail x="-748" y="-1"/>
+			<nail x="-1666" y="8"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1326" y="-102">northSouthSouthNorth_length()&gt;=1</label>
+			<label kind="assignment" x="-1343" y="-68">update_start_time(),update_select_task()</label>
+			<nail x="-773" y="-77"/>
+			<nail x="-1623" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1113" y="-850">job_duration &lt;= t - northSouthSouthNorth[0].vehList[0].t_s</label>
+			<label kind="assignment" x="-944" y="-816">removeJob(1),s = t</label>
+			<nail x="-723" y="-824"/>
+		</transition>
+		<transition>
+			<source ref="id24"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1020" y="-714">job_duration &lt;= t - northEastSouthWest[0].vehList[0].t_s</label>
+			<label kind="assignment" x="-918" y="-672">removeJob(2), s = t</label>
+			<nail x="-697" y="-681"/>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1062" y="-374">job_duration &lt;= t - westEastEastWest[0].vehList[0].t_s</label>
+			<label kind="assignment" x="-995" y="-332">removeJob(3), s = t</label>
+			<nail x="-706" y="-340"/>
+		</transition>
+		<transition>
+			<source ref="id26"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1122" y="-221">job_duration &lt;= t - westNorthEastSouth[0].vehList[0].t_s</label>
+			<label kind="assignment" x="-986" y="-187">removeJob(4), s = t</label>
+			<nail x="-714" y="-187"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-1623" y="-246">westNorthEastSouth_length()&gt;=1 &amp;&amp; 
+selected_task == 4</label>
+			<label kind="synchronisation" x="-1521" y="-195">execute!</label>
+			<label kind="assignment" x="-1649" y="-161">current_running_job_id = westNorthEastSouth[0].id, 
+tStart = westNorthEastSouth[0].vehList[0].t_s</label>
+			<nail x="-1666" y="-195"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id25"/>
+			<label kind="guard" x="-1606" y="-399">westEastEastWest_length()&gt;=1 &amp;&amp; 
+selected_task == 3</label>
+			<label kind="synchronisation" x="-1538" y="-348">execute!</label>
+			<label kind="assignment" x="-1640" y="-323">current_running_job_id = westEastEastWest[0].id, 
+tStart = westEastEastWest[0].vehList[0].t_s</label>
+			<nail x="-1640" y="-348"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id24"/>
+			<label kind="guard" x="-1572" y="-730">northEastSouthWest_length()&gt;=1 &amp;&amp; 
+selected_task == 2</label>
+			<label kind="synchronisation" x="-1487" y="-688">execute!</label>
+			<label kind="assignment" x="-1615" y="-662">current_running_job_id = northEastSouthWest[0].id, 
+tStart = northEastSouthWest[0].vehList[0].t_s</label>
+			<nail x="-1631" y="-688"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id22"/>
+			<label kind="guard" x="-1581" y="-875">northSouthSouthNorth_length()&gt;=1 &amp;&amp; 
+selected_task == 1</label>
+			<label kind="synchronisation" x="-1487" y="-824">execute!</label>
+			<label kind="assignment" x="-1615" y="-807">current_running_job_id = northSouthSouthNorth[0].id, 
+tStart = northSouthSouthNorth[0].vehList[0].t_s</label>
+			<nail x="-1623" y="-824"/>
+		</transition>
+	</template>
+	<template>
+		<name>interruptHandler</name>
+		<location id="id29" x="-238" y="-51">
+			<name x="-263" y="-102">listening</name>
+			<label kind="invariant" x="-255" y="-85">j_p&lt;=0</label>
+		</location>
+		<location id="id30" x="-42" y="102">
+			<name x="-25" y="93">interupt</name>
+			<label kind="invariant" x="-25" y="110">j_p &gt;= 1</label>
+		</location>
+		<location id="id31" x="-501" y="-51">
+			<name x="-511" y="-85">off</name>
+		</location>
+		<location id="id32" x="-42" y="-42">
+			<committed/>
+		</location>
+		<location id="id33" x="-238" y="102">
+			<committed/>
+		</location>
+		<init ref="id31"/>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-170" y="51">j_p&gt;=1</label>
+			<nail x="-144" y="76"/>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id29"/>
+			<label kind="guard" x="-161" y="-17">j_p&lt;=0</label>
+			<nail x="-144" y="-17"/>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-25" y="42">j_p&gt;=1</label>
+			<label kind="synchronisation" x="-25" y="25">preempt!</label>
+		</transition>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id29"/>
+			<label kind="guard" x="-314" y="17">j_p&lt;=0</label>
+			<label kind="synchronisation" x="-323" y="35">continue_!</label>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-467" y="-34">t&gt;=max_simulation_duration</label>
+			<nail x="-374" y="-34"/>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id29"/>
+			<label kind="guard" x="-459" y="-111">interrupt_mode == 1&amp;&amp;
+t&lt;max_simulation_duration</label>
+			<nail x="-374" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id30"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-195" y="170">t &gt;= j_p_start_t</label>
+			<label kind="synchronisation" x="-161" y="153">row!</label>
+			<label kind="assignment" x="-229" y="136">execute_all_in_priority_task()</label>
+			<nail x="-144" y="127"/>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id32"/>
+			<label kind="synchronisation" x="-187" y="-119">priority_check?</label>
+			<label kind="assignment" x="-187" y="-102">job_examinate()</label>
+			<nail x="-144" y="-76"/>
+		</transition>
+	</template>
+	<template>
+		<name></name>
+		<location id="id34" x="-348" y="-204">
+		</location>
+		<init ref="id34"/>
+	</template>
+	<system>// Place template instantiations here.
+// List one or more processes to be composed into a system.
+
+vehi1 = vehicle_(veh1, clk1);
+vehi2 = vehicle_(veh2, clk2);
+vehi3 = vehicle_(veh3, clk3);
+vehi4 = vehicle_(veh4, clk4);
+vehi5 = vehicle_(veh5, clk5);
+vehi6 = vehicle_(veh6, clk6);
+vehi7 = vehicle_(veh7, clk7);
+vehi8 = vehicle_(veh8, clk8);
+reqHandler = requestHandler();
+jobM = jobManager();
+//scheduler_ = classic();
+scheduler_ = scheduler();
+iHandler = interruptHandler();
+vehicle_queue0 = vehicle_queue();
+c = clck();
+system c,vehi8&lt;vehi7&lt;vehi6&lt;vehi5&lt;vehi4&lt;vehi3&lt;vehi2&lt;vehi1, scheduler_&lt;jobM&lt; reqHandler, iHandler, vehicle_queue0;
+    </system>
+	<queries>
+		<query>
+			<formula>E&lt;&gt; vehi1.crossed &amp;&amp; vehi2.crossed &amp;&amp; vehi3.crossed &amp;&amp; vehi4.crossed</formula>
+			<comment>All car should be abble to corss</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; scheduler_.Task4 </formula>
+			<comment>task 4 can be reached</comment>
+		</query>
+		<query>
+			<formula>A[] not (scheduler_.Task1 &amp;&amp; scheduler_.Task4)</formula>
+			<comment>only one task can be execute at a time</comment>
+		</query>
+		<query>
+			<formula>A[] max_delay_high_p &lt;= SWITCH_TIME </formula>
+			<comment>delay time for high priority task should be not greater than switch time</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; !((vehi1.clk_v &lt; job_duration) &amp;&amp; (scheduler_.idle) &amp;&amp; (vehi1.crossed)) </formula>
+			<comment>the scheduler cannot changed to idle state while the serviced vehicle is crossing the intersection</comment>
+		</query>
+		<query>
+			<formula></formula>
+			<comment></comment>
+		</query>
+	</queries>
+</nta>

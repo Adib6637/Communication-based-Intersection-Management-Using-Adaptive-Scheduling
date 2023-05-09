@@ -1,0 +1,8 @@
+<configuration>
+    <input>
+        <net-file value="ims.net.xml"/>
+        <route-files value="ims.rou.xml"/>
+        <additional-files value="ims.add.xml"/>
+    </input>
+</configuration>
+
