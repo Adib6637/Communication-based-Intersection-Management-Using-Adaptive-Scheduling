@@ -3,7 +3,7 @@
 # System model
 
 This repository contains two simulation model that with diffrent purpose
-1. UPPAL Model that used to verify the puoposed and safety of the proposed system
+1. UPPAL Model that used to validate and verify the puoposed and safety of the proposed system
 2. SUMO Model to validate and visualize the merging of job proposed 
 
 ## UPPAL Model
